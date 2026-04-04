@@ -1,4 +1,4 @@
-package Buffer;
+package buffer;
 
 import com.oocourse.elevator1.PersonRequest;
 
@@ -25,11 +25,11 @@ public class RequestTable {
             HashSet<PersonRequest> set = requestMap.computeIfAbsent(floor, k -> new HashSet<>());
             // 然后把person加进去
             set.add(person);
-        }finally {
+        } finally {
             writeLock.unlock();
         }
         //通知
-        synchronized (notifier){
+        synchronized (notifier) {
             notifier.notifyAll();
         }
     }
@@ -48,7 +48,7 @@ public class RequestTable {
             if (set.isEmpty()) {
                 requestMap.remove(floor);
             }
-        }finally {
+        } finally {
             writeLock.unlock();
         }
     }
@@ -61,10 +61,10 @@ public class RequestTable {
             if (set == null) {
                 return new HashSet<>();
             }
-            else{
+            else {
                 return new HashSet<>(set);
             }
-        }finally {
+        } finally {
             readLock.unlock();
         }
     }
@@ -73,9 +73,9 @@ public class RequestTable {
     public PersonRequest pollRequest() {
         writeLock.lock();
         try {
-            for(Integer floor : requestMap.keySet()) {
+            for (Integer floor : requestMap.keySet()) {
                 HashSet<PersonRequest> set = requestMap.get(floor);
-                if(!set.isEmpty()) {
+                if (!set.isEmpty()) {
                     PersonRequest person = set.iterator().next();
                     set.remove(person);
                     if (set.isEmpty()) {
@@ -95,7 +95,7 @@ public class RequestTable {
         readLock.lock();
         try {
             return requestMap.isEmpty();
-        }finally {
+        } finally {
             readLock.unlock();
         }
     }
@@ -104,11 +104,11 @@ public class RequestTable {
         writeLock.lock();
         try {
             this.endFlag = endFlag;
-        }finally {
+        } finally {
             writeLock.unlock();
         }
         //通知
-        synchronized (notifier){
+        synchronized (notifier) {
             notifier.notifyAll();
         }
     }
@@ -117,14 +117,14 @@ public class RequestTable {
         readLock.lock();
         try {
             return endFlag;
-        }finally {
+        } finally {
             readLock.unlock();
         }
     }
 
     public void awaitNewRequest() throws InterruptedException {
         synchronized (notifier) {
-            while (!endFlag && !isEmpty()) {
+            while (!endFlag && isEmpty()) {
                 notifier.wait();
             }
         }

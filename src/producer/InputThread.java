@@ -1,6 +1,6 @@
-package Producer;
+package producer;
 
-import Buffer.RequestTable;
+import buffer.RequestTable;
 import com.oocourse.elevator1.ElevatorInput;
 import com.oocourse.elevator1.PersonRequest;
 import com.oocourse.elevator1.Request;
@@ -18,9 +18,9 @@ public class InputThread extends Thread {
     public void run() {
         try {
             ElevatorInput elevatorInput = new ElevatorInput(System.in);
-            while(true) {
+            while (true) {
                 Request request = elevatorInput.nextRequest();
-                if(request == null) {
+                if (request == null) {
                     allRequests.setEndFlag(true);
                     break;
                 }
@@ -29,7 +29,7 @@ public class InputThread extends Thread {
                 }
             }
             elevatorInput.close();
-        }catch (IOException e){
+        } catch (IOException e) {
             Thread.currentThread().interrupt();
         }
     }
