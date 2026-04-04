@@ -64,7 +64,7 @@ public class Strategy {
             //得到在该层中需要上电梯的所有人
             HashSet<PersonRequest> people = requestTable.getRequest(curFloor);
             //判断这一层是否有人需要上电梯
-            return !people.isEmpty();
+            return (!people.isEmpty());
         }
     }
 

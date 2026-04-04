@@ -11,6 +11,7 @@ public class Schedule extends Thread {
     private RequestTable allRequests;
     private ArrayList<RequestTable> requestTables;
     private HashMap<Integer, ElevatorThread> elevatorMap;
+    private final String[] strFloor = {"B4","B3","B2","B1","F1","F2","F3","F4","F5","F6","F7"};
 
     public Schedule(RequestTable allRequests,
                     ArrayList<RequestTable> requestTables,
@@ -32,15 +33,19 @@ public class Schedule extends Thread {
                     return;
                 }
                 PersonRequest person = allRequests.pollRequest();
-                if (person != null) {
+                if (person == null) {
                     //还没结束
                     if (!allRequests.isEnd()) {
                         allRequests.awaitNewRequest();
                     }
+                }
+                else {
                     //将person加入电梯表
                     int num = bestElevator(person);
                     requestTables.get(num - 1).addRequest(person);
-                    TimableOutput.println("RECEIVE-" + person.getPersonId() + "-" + num);
+                    TimableOutput.println("RECEIVE-" +
+                            person.getPersonId() + "-"
+                            + strFloor[num - 1]);
                 }
             }
         } catch (InterruptedException e) {

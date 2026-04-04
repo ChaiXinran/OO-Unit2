@@ -11,9 +11,10 @@ import java.util.HashMap;
 import java.util.HashSet;
 
 public class ElevatorThread extends Thread {
-    private int id;
+    private final int id;
     private int curWeight = 0;
     private int curFloor = 5;
+    private final String[] strFloor = {"B4","B3","B2","B1","F1","F2","F3","F4","F5","F6","F7"};
     private boolean direction = true;
     private HashMap<Integer, HashSet<PersonRequest>> destMap = new HashMap<>();
     private RequestTable requestTable;
@@ -65,26 +66,28 @@ public class ElevatorThread extends Thread {
             if (curFloor < 11) {
                 curFloor++;
                 Thread.sleep(400);
-                TimableOutput.println("ARRIVE-" + curFloor + "-" + id);
+                TimableOutput.println("ARRIVE-" + strFloor[curFloor - 1] + "-" + id);
             }
         }
         else {
             if (curFloor > 1) {
                 curFloor--;
                 Thread.sleep(400);
-                TimableOutput.println("ARRIVE-" + curFloor + "-" + id);
+                TimableOutput.println("ARRIVE-" + strFloor[curFloor - 1] + "-" + id);
             }
         }
     }
 
     private void openAndClose() throws InterruptedException {
-        TimableOutput.println("OPEN-" + curFloor + "-" + id);
+        TimableOutput.println("OPEN-" + strFloor[curFloor - 1] + "-" + id);
         //下电梯
         HashSet<PersonRequest> custom = destMap.get(curFloor);
         if (custom != null) {
             for (PersonRequest person : custom) {
                 curWeight -= person.getWeight();
-                TimableOutput.println("OUT-S-" + person.getPersonId() + curFloor + "-" + id);
+                TimableOutput.println("OUT-S-" +
+                        person.getPersonId() +
+                        strFloor[curFloor - 1] + "-" + id);
             }
             destMap.remove(curFloor);
         }
@@ -100,11 +103,13 @@ public class ElevatorThread extends Thread {
                     String floorStr = person.getToFloor();
                     int floor = parseFloor(floorStr);
                     destMap.get(floor).add(person);
-                    TimableOutput.println("IN-" + person.getPersonId() + curFloor + "-" + id);
+                    TimableOutput.println("IN-" +
+                            person.getPersonId() +
+                            strFloor[curFloor - 1] + "-" + id);
                 }
             }
         }
-        TimableOutput.println("CLOSE-" + curFloor + "-" + id);
+        TimableOutput.println("CLOSE-" + strFloor[curFloor - 1] + "-" + id);
     }
 
     private int parseFloor(String s) {
