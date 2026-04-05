@@ -22,7 +22,14 @@ public class Strategy {
         //如果电梯里有人
         //并且有人的目的地在电梯行动方向上
         if (curWeight != 0) {
-            return AdviceType.MOVE;
+            if (hasDestInOriginDirection(curFloor, direction, destMap)) {
+                return AdviceType.MOVE;
+            } else if (hasAnyDest(destMap)) {
+                return AdviceType.REVERSE;
+            }
+            else {
+                return AdviceType.WAIT;
+            }
         }
         //如果电梯里没有人
         else {
@@ -88,6 +95,33 @@ public class Strategy {
             }
         }
         //判断这一层是否有人需要上电梯
+        return false;
+    }
+
+    private boolean hasDestInOriginDirection(int curFloor, boolean direction,
+                                             HashMap<Integer, HashSet<PersonRequest>> destMap) {
+        if (direction) {
+            for (int i = curFloor + 1; i <= 11; i++) {
+                if (destMap.containsKey(i) && !destMap.get(i).isEmpty()) {
+                    return true;
+                }
+            }
+        } else {
+            for (int i = curFloor - 1; i >= 1; i--) {
+                if (destMap.containsKey(i) && !destMap.get(i).isEmpty()) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    private boolean hasAnyDest(HashMap<Integer, HashSet<PersonRequest>> destMap) {
+        for (HashSet<PersonRequest> set : destMap.values()) {
+            if (set != null && !set.isEmpty()) {
+                return true;
+            }
+        }
         return false;
     }
 }

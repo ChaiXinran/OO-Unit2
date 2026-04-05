@@ -64,15 +64,15 @@ public class ElevatorThread extends Thread {
     private void move() throws InterruptedException {
         if (direction) {
             if (curFloor < 11) {
-                curFloor++;
                 Thread.sleep(400);
+                curFloor++;
                 TimableOutput.println("ARRIVE-" + strFloor[curFloor - 1] + "-" + id);
             }
         }
         else {
             if (curFloor > 1) {
-                curFloor--;
                 Thread.sleep(400);
+                curFloor--;
                 TimableOutput.println("ARRIVE-" + strFloor[curFloor - 1] + "-" + id);
             }
         }
@@ -86,12 +86,11 @@ public class ElevatorThread extends Thread {
             for (PersonRequest person : custom) {
                 curWeight -= person.getWeight();
                 TimableOutput.println("OUT-S-" +
-                        person.getPersonId() +
+                        person.getPersonId() + "-" +
                         strFloor[curFloor - 1] + "-" + id);
             }
             destMap.remove(curFloor);
         }
-        Thread.sleep(400);
         //上电梯
         HashSet<PersonRequest> people =  requestTable.getRequest(curFloor);
         if (people != null) {
@@ -102,13 +101,14 @@ public class ElevatorThread extends Thread {
                     requestTable.removeRequest(person);
                     String floorStr = person.getToFloor();
                     int floor = parseFloor(floorStr);
-                    destMap.get(floor).add(person);
+                    destMap.computeIfAbsent(floor, k -> new HashSet<>()).add(person);
                     TimableOutput.println("IN-" +
-                            person.getPersonId() +
+                            person.getPersonId() + "-" +
                             strFloor[curFloor - 1] + "-" + id);
                 }
             }
         }
+        Thread.sleep(400);
         TimableOutput.println("CLOSE-" + strFloor[curFloor - 1] + "-" + id);
     }
 

@@ -45,7 +45,7 @@ public class Schedule extends Thread {
                     requestTables.get(num - 1).addRequest(person);
                     TimableOutput.println("RECEIVE-" +
                             person.getPersonId() + "-"
-                            + strFloor[num - 1]);
+                            + num);
                 }
             }
         } catch (InterruptedException e) {
