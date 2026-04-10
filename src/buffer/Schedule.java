@@ -1,17 +1,18 @@
 package buffer;
 
 import consumer.ElevatorThread;
-import com.oocourse.elevator1.PersonRequest;
+
 import com.oocourse.elevator1.TimableOutput;
+import producer.Person;
 
 import java.util.ArrayList;
 import java.util.HashMap;
 
 public class Schedule extends Thread {
-    private RequestTable allRequests;
-    private ArrayList<RequestTable> requestTables;
-    private HashMap<Integer, ElevatorThread> elevatorMap;
-    private final String[] strFloor = {"B4","B3","B2","B1","F1","F2","F3","F4","F5","F6","F7"};
+    private final RequestTable allRequests;
+    private final ArrayList<RequestTable> requestTables;
+    private final HashMap<Integer, ElevatorThread> elevatorMap;
+    //private final String[] strFloor = {"B4","B3","B2","B1","F1","F2","F3","F4","F5","F6","F7"};
 
     public Schedule(RequestTable allRequests,
                     ArrayList<RequestTable> requestTables,
@@ -32,7 +33,7 @@ public class Schedule extends Thread {
                     }
                     return;
                 }
-                PersonRequest person = allRequests.pollRequest();
+                Person person = allRequests.pollRequest();
                 if (person == null) {
                     //还没结束
                     if (!allRequests.isEnd()) {
@@ -42,10 +43,10 @@ public class Schedule extends Thread {
                 else {
                     //将person加入电梯表
                     int num = bestElevator(person);
-                    requestTables.get(num - 1).addRequest(person);
                     TimableOutput.println("RECEIVE-" +
-                            person.getPersonId() + "-"
+                            person.getId() + "-"
                             + num);
+                    requestTables.get(num - 1).addRequest(person);
                 }
             }
         } catch (InterruptedException e) {
@@ -53,7 +54,7 @@ public class Schedule extends Thread {
         }
     }
 
-    public int bestElevator(PersonRequest person) {
+    public int bestElevator(Person person) {
         return person.getElevatorId();
     }
 }

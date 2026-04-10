@@ -1,28 +1,30 @@
 package buffer;
 
-import com.oocourse.elevator1.PersonRequest;
+import producer.Person;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 public class RequestTable {
     private boolean endFlag = false;
-    private final HashMap<Integer, HashSet<PersonRequest>> requestMap = new HashMap<>();
+    private final HashMap<Integer, HashSet<Person>> requestMap = new HashMap<>();
+    private Integer newWeight = -1;
 
     private final ReentrantReadWriteLock rwLock = new ReentrantReadWriteLock();
     private final Lock readLock = rwLock.readLock();
     private final Lock writeLock = rwLock.writeLock();
     private final Object notifier = new Object();
 
-    public void addRequest(PersonRequest person) {
-        String floorStr = person.getFromFloor();
-        int floor = parseFloor(floorStr);
+    public void addRequest(Person person) {
+        int floor = person.getFromFloor();
         writeLock.lock();
         try {
             //如果这一层没有集合，就新建一个HashSet
-            HashSet<PersonRequest> set = requestMap.computeIfAbsent(floor, k -> new HashSet<>());
+            HashSet<Person> set = requestMap.computeIfAbsent(floor, k -> new HashSet<>());
             // 然后把person加进去
             set.add(person);
         } finally {
@@ -34,12 +36,11 @@ public class RequestTable {
         }
     }
 
-    public void removeRequest(PersonRequest person) {
-        String floorStr = person.getFromFloor();
-        int floor = parseFloor(floorStr);
+    public void removeRequest(Person person) {
+        int floor = person.getFromFloor();
         writeLock.lock();
         try {
-            HashSet<PersonRequest> set = requestMap.get(floor);
+            HashSet<Person> set = requestMap.get(floor);
             if (set == null) {
                 return;
             }
@@ -54,10 +55,10 @@ public class RequestTable {
     }
 
     //得到这一层的所有请求
-    public HashSet<PersonRequest> getRequest(int floor) {
+    public HashSet<Person> getRequest(int floor) {
         readLock.lock();
         try {
-            HashSet<PersonRequest> set = requestMap.get(floor);
+            HashSet<Person> set = requestMap.get(floor);
             if (set == null) {
                 return new HashSet<>();
             }
@@ -70,13 +71,13 @@ public class RequestTable {
     }
 
     //随便取一个请求
-    public PersonRequest pollRequest() {
+    public Person pollRequest() {
         writeLock.lock();
         try {
             for (Integer floor : requestMap.keySet()) {
-                HashSet<PersonRequest> set = requestMap.get(floor);
+                HashSet<Person> set = requestMap.get(floor);
                 if (!set.isEmpty()) {
-                    PersonRequest person = set.iterator().next();
+                    Person person = set.iterator().next();
                     set.remove(person);
                     if (set.isEmpty()) {
                         requestMap.remove(floor);
@@ -87,6 +88,69 @@ public class RequestTable {
             return null;
         }
         finally {
+            writeLock.unlock();
+        }
+    }
+
+    public ArrayList<Person> letInRequests2(int curFloor,int curWeight,boolean direction,
+                                           HashMap<Integer, HashSet<Person>> destMap) {
+        ArrayList<Person> letIn = new ArrayList<>();
+        writeLock.lock();
+        newWeight = curWeight;
+        try {
+            HashSet<Person> set = requestMap.get(curFloor);
+            if (set == null || set.isEmpty()) {
+                return letIn;
+            }
+            for (Person person : set) {
+                if (person.isDirection() == direction) {
+                    int weight = person.getWeight();
+                    if (newWeight + weight <= 400) {
+                        newWeight += weight;
+                        letIn.add(person);
+                        destMap.computeIfAbsent(
+                                person.getToFloor(), k -> new HashSet<>()).add(person);
+                    }
+                }
+            }
+        }
+        finally {
+            writeLock.unlock();
+        }
+        return letIn;
+    }
+
+    public ArrayList<Person> letInRequests(int curFloor, int curWeight, boolean direction,
+                                           HashMap<Integer, HashSet<Person>> destMap) {
+        ArrayList<Person> letIn = new ArrayList<>();
+        writeLock.lock();
+        try {
+            newWeight = curWeight;
+            HashSet<Person> set = requestMap.get(curFloor);
+            if (set == null || set.isEmpty()) {
+                return letIn;
+            }
+
+            Iterator<Person> iterator = set.iterator();
+            while (iterator.hasNext()) {
+                Person person = iterator.next();
+                if (person.isDirection() == direction) {
+                    int weight = person.getWeight();
+                    if (newWeight + weight <= 400) {
+                        newWeight += weight;
+                        letIn.add(person);
+                        destMap.computeIfAbsent(
+                                person.getToFloor(), k -> new HashSet<>()).add(person);
+                        iterator.remove(); // 关键：在锁内直接删
+                    }
+                }
+            }
+
+            if (set.isEmpty()) {
+                requestMap.remove(curFloor);
+            }
+            return letIn;
+        } finally {
             writeLock.unlock();
         }
     }
@@ -130,12 +194,12 @@ public class RequestTable {
         }
     }
 
-    public int parseFloor(String s) {
-        int num = Integer.parseInt(s.substring(1));
-        if (s.charAt(0) == 'B') {
-            return 5 - num;
-        } else { // F
-            return num + 4;
+    public Integer getNewWeight() {
+        readLock.lock();
+        try {
+            return newWeight;
+        } finally {
+            readLock.unlock();
         }
     }
 }

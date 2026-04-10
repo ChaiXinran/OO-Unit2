@@ -8,7 +8,7 @@ import com.oocourse.elevator1.Request;
 import java.io.IOException;
 
 public class InputThread extends Thread {
-    private RequestTable allRequests;
+    private final RequestTable allRequests;
 
     public InputThread(RequestTable allRequests) {
         this.allRequests = allRequests;
@@ -25,7 +25,12 @@ public class InputThread extends Thread {
                     break;
                 }
                 else {
-                    allRequests.addRequest((PersonRequest) request);
+                    PersonRequest personRequest = (PersonRequest) request;
+                    Person person = new Person(personRequest.getPersonId(),
+                            personRequest.getFromFloor(),
+                            personRequest.getToFloor(), personRequest.getWeight(),
+                            personRequest.getElevatorId());
+                    allRequests.addRequest(person);
                 }
             }
             elevatorInput.close();

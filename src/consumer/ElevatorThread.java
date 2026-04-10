@@ -4,9 +4,10 @@ import buffer.AdviceType;
 import buffer.RequestTable;
 import buffer.Strategy;
 
-import com.oocourse.elevator1.PersonRequest;
 import com.oocourse.elevator1.TimableOutput;
+import producer.Person;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 
@@ -16,9 +17,10 @@ public class ElevatorThread extends Thread {
     private int curFloor = 5;
     private final String[] strFloor = {"B4","B3","B2","B1","F1","F2","F3","F4","F5","F6","F7"};
     private boolean direction = true;
-    private HashMap<Integer, HashSet<PersonRequest>> destMap = new HashMap<>();
-    private RequestTable requestTable;
-    private Strategy strategy;
+    private final HashMap<Integer, HashSet<Person>> destMap = new HashMap<>();
+    private final RequestTable requestTable;
+    private final Strategy strategy;
+    private boolean doorOpen = false;
 
     public ElevatorThread(int id,RequestTable requestTable, Strategy strategy) {
         this.id = id;
@@ -40,12 +42,16 @@ public class ElevatorThread extends Thread {
             }
             else if (advice == AdviceType.OPEN) {
                 try {
-                    openAndClose();
+                    openAndServe();
                 } catch (InterruptedException e) {
                     throw new RuntimeException(e);
                 }
             }
             else if (advice == AdviceType.OVER) {
+                if (doorOpen) {
+                    TimableOutput.println("CLOSE-" + strFloor[curFloor - 1] + "-" + id);
+                    doorOpen = false;
+                }
                 break;
             }
             else if (advice == AdviceType.WAIT) {
@@ -62,6 +68,10 @@ public class ElevatorThread extends Thread {
     }
 
     private void move() throws InterruptedException {
+        if (doorOpen) {
+            TimableOutput.println("CLOSE-" + strFloor[curFloor - 1] + "-" + id);
+            doorOpen = false;
+        }
         if (direction) {
             if (curFloor < 11) {
                 Thread.sleep(400);
@@ -81,43 +91,68 @@ public class ElevatorThread extends Thread {
     private void openAndClose() throws InterruptedException {
         TimableOutput.println("OPEN-" + strFloor[curFloor - 1] + "-" + id);
         //下电梯
-        HashSet<PersonRequest> custom = destMap.get(curFloor);
+        HashSet<Person> custom = destMap.get(curFloor);
         if (custom != null) {
-            for (PersonRequest person : custom) {
+            for (Person person : custom) {
                 curWeight -= person.getWeight();
                 TimableOutput.println("OUT-S-" +
-                        person.getPersonId() + "-" +
+                        person.getId() + "-" +
                         strFloor[curFloor - 1] + "-" + id);
             }
             destMap.remove(curFloor);
         }
+        Thread.sleep(400);
         //上电梯
-        HashSet<PersonRequest> people =  requestTable.getRequest(curFloor);
-        if (people != null) {
-            for (PersonRequest person : people) {
-                int weight = person.getWeight() + curWeight;
-                if (weight <= 400) {
-                    curWeight = weight;
-                    requestTable.removeRequest(person);
-                    String floorStr = person.getToFloor();
-                    int floor = parseFloor(floorStr);
-                    destMap.computeIfAbsent(floor, k -> new HashSet<>()).add(person);
-                    TimableOutput.println("IN-" +
-                            person.getPersonId() + "-" +
-                            strFloor[curFloor - 1] + "-" + id);
-                }
+        ArrayList<Person> customers =
+                requestTable.letInRequests(curFloor,curWeight,direction,destMap);
+        if (!customers.isEmpty()) {
+            String str = strFloor[curFloor - 1];
+            curWeight = requestTable.getNewWeight();
+            for (Person person : customers) {
+                requestTable.removeRequest(person);
+                TimableOutput.println("IN-" +
+                        person.getId() + "-" +
+                        str + "-" + id);
             }
         }
-        Thread.sleep(400);
         TimableOutput.println("CLOSE-" + strFloor[curFloor - 1] + "-" + id);
     }
 
-    private int parseFloor(String s) {
-        int num = Integer.parseInt(s.substring(1));
-        if (s.charAt(0) == 'B') {
-            return 5 - num;
-        } else { // F
-            return num + 4;
+    private void openAndServe() throws InterruptedException {
+        if (!doorOpen) {
+            TimableOutput.println("OPEN-" + strFloor[curFloor - 1] + "-" + id);
+            doorOpen = true;
+            sleep(400);
+        }
+        letOutCurrentFloor();
+        letInCurrentFloor();
+        //不关门
+    }
+
+    private void letOutCurrentFloor() {
+        HashSet<Person> outSet = destMap.get(curFloor);
+        if (outSet == null || outSet.isEmpty()) {
+            return;
+        }
+        for (Person person : outSet) {
+            curWeight -= person.getWeight();
+            TimableOutput.println("OUT-S-" + person.getId() + "-"
+                    + strFloor[curFloor - 1] + "-" + id);
+        }
+        destMap.remove(curFloor);
+    }
+
+    private void letInCurrentFloor() {
+        ArrayList<Person> inList =
+                requestTable.letInRequests(curFloor, curWeight, direction, destMap);
+        if (inList.isEmpty()) {
+            return;
+        }
+        curWeight = requestTable.getNewWeight();
+        for (Person person : inList) {
+            //requestTable.removeRequest(person);
+            TimableOutput.println("IN-" + person.getId() + "-"
+                    + strFloor[curFloor - 1] + "-" + id);
         }
     }
 }

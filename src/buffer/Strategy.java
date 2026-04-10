@@ -1,35 +1,28 @@
 package buffer;
 
-import com.oocourse.elevator1.PersonRequest;
+import producer.Person;
 
 import java.util.HashMap;
 import java.util.HashSet;
 
 public class Strategy {
-    private RequestTable requestTable;
+    private final RequestTable requestTable;
 
     public Strategy(RequestTable requestTable) {
         this.requestTable = requestTable;
     }
 
     public AdviceType getAdvice(int curFloor, int curWeight, boolean direction,
-                                HashMap<Integer,HashSet<PersonRequest>> destMap) {
-        //判断是否可以上下电梯
-        if (canOpenForIn(curFloor, curWeight) ||
-            canOpenForOut(curFloor,destMap)) {
+                                HashMap<Integer,HashSet<Person>> destMap) {
+
+        if (canOpenForOut(curFloor, destMap) ||
+                canOpenForIn(curFloor, curWeight, direction)) {
             return AdviceType.OPEN;
         }
         //如果电梯里有人
-        //并且有人的目的地在电梯行动方向上
         if (curWeight != 0) {
-            if (hasDestInOriginDirection(curFloor, direction, destMap)) {
-                return AdviceType.MOVE;
-            } else if (hasAnyDest(destMap)) {
-                return AdviceType.REVERSE;
-            }
-            else {
-                return AdviceType.WAIT;
-            }
+            //有人的目的地在电梯行动方向上
+            return AdviceType.MOVE;
         }
         //如果电梯里没有人
         else {
@@ -44,7 +37,7 @@ public class Strategy {
                 }
             }
             //如果请求队列里有人
-            if (hasReqInOriginDirection(curFloor,direction)) {
+            else if (hasReqInOriginDirection(curFloor,direction)) {
                 //如果请求发出地在电梯前方
                 return AdviceType.MOVE;
             }
@@ -56,23 +49,27 @@ public class Strategy {
     }
 
     //判断现在是否可以把一些人放下来
-    private boolean canOpenForOut(int curFloor, HashMap<Integer, HashSet<PersonRequest>> destMap) {
+    private boolean canOpenForOut(int curFloor, HashMap<Integer, HashSet<Person>> destMap) {
         //判断是否有人需要在这一层下电梯
         return destMap.containsKey(curFloor);
     }
 
     //判断现在是否可以上人
-    private boolean canOpenForIn(int curFloor, int curWeight) {
+    //判断现在是否可以上人
+    private boolean canOpenForIn(int curFloor, int curWeight, boolean direction) {
         //判断体重是否超标
-        if (curWeight > 350) {
-            return false;
-        }
-        else {
+        if (curWeight <= 350) {
             //得到在该层中需要上电梯的所有人
-            HashSet<PersonRequest> people = requestTable.getRequest(curFloor);
+            HashSet<Person> people = requestTable.getRequest(curFloor);
             //判断这一层是否有人需要上电梯
-            return (!people.isEmpty());
+            for (Person person : people) {
+                if (person.isDirection() == direction
+                        && curWeight + person.getWeight() <= 400) {
+                    return true;
+                }
+            }
         }
+        return false;
     }
 
     private boolean hasReqInOriginDirection(int curFloor, boolean direction) {
@@ -80,7 +77,7 @@ public class Strategy {
         if (direction) {
             //得到在该层前方中需要上电梯的所有人
             for (int i = curFloor + 1;i <= 11; i++) {
-                HashSet<PersonRequest> people = requestTable.getRequest(i);
+                HashSet<Person> people = requestTable.getRequest(i);
                 if (!people.isEmpty()) {
                     return true;
                 }
@@ -88,40 +85,13 @@ public class Strategy {
         }
         else {
             for (int i = curFloor - 1; i >= 1; i--) {
-                HashSet<PersonRequest> people = requestTable.getRequest(i);
+                HashSet<Person> people = requestTable.getRequest(i);
                 if (!people.isEmpty()) {
                     return true;
                 }
             }
         }
         //判断这一层是否有人需要上电梯
-        return false;
-    }
-
-    private boolean hasDestInOriginDirection(int curFloor, boolean direction,
-                                             HashMap<Integer, HashSet<PersonRequest>> destMap) {
-        if (direction) {
-            for (int i = curFloor + 1; i <= 11; i++) {
-                if (destMap.containsKey(i) && !destMap.get(i).isEmpty()) {
-                    return true;
-                }
-            }
-        } else {
-            for (int i = curFloor - 1; i >= 1; i--) {
-                if (destMap.containsKey(i) && !destMap.get(i).isEmpty()) {
-                    return true;
-                }
-            }
-        }
-        return false;
-    }
-
-    private boolean hasAnyDest(HashMap<Integer, HashSet<PersonRequest>> destMap) {
-        for (HashSet<PersonRequest> set : destMap.values()) {
-            if (set != null && !set.isEmpty()) {
-                return true;
-            }
-        }
         return false;
     }
 }
