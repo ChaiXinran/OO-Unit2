@@ -1,17 +1,20 @@
 package producer;
 
 import buffer.RequestTable;
-import com.oocourse.elevator1.ElevatorInput;
-import com.oocourse.elevator1.PersonRequest;
-import com.oocourse.elevator1.Request;
+import com.oocourse.elevator2.ElevatorInput;
+import com.oocourse.elevator2.PersonRequest;
+import com.oocourse.elevator2.Request;
+import com.oocourse.elevator2.MaintRequest;
 
 import java.io.IOException;
 
 public class InputThread extends Thread {
     private final RequestTable allRequests;
+    private final RequestTable maintainRequests;
 
-    public InputThread(RequestTable allRequests) {
+    public InputThread(RequestTable allRequests, RequestTable maintainRequests) {
         this.allRequests = allRequests;
+        this.maintainRequests = maintainRequests;
     }
 
     @Override
@@ -22,15 +25,24 @@ public class InputThread extends Thread {
                 Request request = elevatorInput.nextRequest();
                 if (request == null) {
                     allRequests.setEndFlag(true);
+                    maintainRequests.setEndFlag(true);
                     break;
                 }
                 else {
-                    PersonRequest personRequest = (PersonRequest) request;
-                    Person person = new Person(personRequest.getPersonId(),
-                            personRequest.getFromFloor(),
-                            personRequest.getToFloor(), personRequest.getWeight(),
-                            personRequest.getElevatorId());
-                    allRequests.addRequest(person);
+                    if (request instanceof PersonRequest) {
+                        PersonRequest personRequest = (PersonRequest) request;
+                        Passenger person = new Passenger(personRequest.getPersonId(),
+                                personRequest.getFromFloor(),
+                                personRequest.getToFloor(), personRequest.getWeight());
+                        allRequests.addRequest(person);
+                    }
+                    else if (request instanceof MaintRequest) {
+                        MaintRequest maintRequest = (MaintRequest) request;
+                        Worker worker = new Worker(maintRequest.getWorkerId(),
+                                maintRequest.getToFloor(),
+                                maintRequest.getElevatorId());
+                        maintainRequests.addRequest(worker);
+                    }
                 }
             }
             elevatorInput.close();

@@ -1,11 +1,10 @@
 import buffer.RequestTable;
 import buffer.Schedule;
-import buffer.Strategy;
+import consumer.Strategy;
 import consumer.ElevatorThread;
 import producer.InputThread;
-import com.oocourse.elevator1.TimableOutput;
+import com.oocourse.elevator2.TimableOutput;
 
-import java.util.ArrayList;
 import java.util.HashMap;
 
 public class MainClass {
@@ -13,19 +12,17 @@ public class MainClass {
         TimableOutput.initStartTimestamp();
 
         RequestTable allRequests = new RequestTable();
-        ArrayList<RequestTable> requestTables = new ArrayList<>();
+        RequestTable maintainRequests = new RequestTable();
         HashMap<Integer, ElevatorThread> elevatorMap = new HashMap<>();
         for (int i = 1; i <= 6; i++) {
-            RequestTable requestTable = new RequestTable();
-            Strategy strategy = new Strategy(requestTable);
-            ElevatorThread elevatorThread = new ElevatorThread(i,requestTable,strategy);
-            requestTables.add(requestTable);
+            Strategy strategy = new Strategy(allRequests);
+            ElevatorThread elevatorThread = new ElevatorThread(i,allRequests,strategy);
             elevatorMap.put(i,elevatorThread);
             elevatorThread.start();
         }
-        InputThread inputThread = new InputThread(allRequests);
+        InputThread inputThread = new InputThread(allRequests,maintainRequests);
         inputThread.start();
-        Schedule schedule = new Schedule(allRequests,requestTables,elevatorMap);
+        Schedule schedule = new Schedule(allRequests,maintainRequests,elevatorMap);
         schedule.start();
     }
 }

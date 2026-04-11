@@ -92,36 +92,8 @@ public class RequestTable {
         }
     }
 
-    public ArrayList<Person> letInRequests2(int curFloor,int curWeight,boolean direction,
-                                           HashMap<Integer, HashSet<Person>> destMap) {
-        ArrayList<Person> letIn = new ArrayList<>();
-        writeLock.lock();
-        newWeight = curWeight;
-        try {
-            HashSet<Person> set = requestMap.get(curFloor);
-            if (set == null || set.isEmpty()) {
-                return letIn;
-            }
-            for (Person person : set) {
-                if (person.isDirection() == direction) {
-                    int weight = person.getWeight();
-                    if (newWeight + weight <= 400) {
-                        newWeight += weight;
-                        letIn.add(person);
-                        destMap.computeIfAbsent(
-                                person.getToFloor(), k -> new HashSet<>()).add(person);
-                    }
-                }
-            }
-        }
-        finally {
-            writeLock.unlock();
-        }
-        return letIn;
-    }
-
     public ArrayList<Person> letInRequests(int curFloor, int curWeight, boolean direction,
-                                           HashMap<Integer, HashSet<Person>> destMap) {
+                                              HashMap<Integer, HashSet<Person>> destMap) {
         ArrayList<Person> letIn = new ArrayList<>();
         writeLock.lock();
         try {
