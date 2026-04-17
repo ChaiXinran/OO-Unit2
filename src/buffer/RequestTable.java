@@ -1,23 +1,33 @@
 package buffer;
 
+import consumer.ElevatorThread;
+
 import producer.Person;
+import producer.Worker;
 
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.Iterator;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 public class RequestTable {
     private boolean endFlag = false;
     private final HashMap<Integer, HashSet<Person>> requestMap = new HashMap<>();
-    private Integer newWeight = -1;
+
+    private Integer maintainRequestNum = 0;
+    private Integer maintainNotDealNum = 0;
 
     private final ReentrantReadWriteLock rwLock = new ReentrantReadWriteLock();
     private final Lock readLock = rwLock.readLock();
     private final Lock writeLock = rwLock.writeLock();
     private final Object notifier = new Object();
+
+    private final HashMap<Integer, ElevatorThread> elevatorMap;
+
+    public RequestTable(HashMap<Integer, ElevatorThread> elevatorMap) {
+        this.elevatorMap = elevatorMap;
+    }
 
     public void addRequest(Person person) {
         int floor = person.getFromFloor();
@@ -27,6 +37,10 @@ public class RequestTable {
             HashSet<Person> set = requestMap.computeIfAbsent(floor, k -> new HashSet<>());
             // 然后把person加进去
             set.add(person);
+            if (person instanceof Worker) {
+                maintainRequestNum++;
+                maintainNotDealNum++;
+            }
         } finally {
             writeLock.unlock();
         }
@@ -36,37 +50,32 @@ public class RequestTable {
         }
     }
 
-    public void removeRequest(Person person) {
-        int floor = person.getFromFloor();
+    public void signal() {
+        synchronized (notifier) {
+            notifier.notifyAll();
+        }
+    }
+
+    public void addRequests(ArrayList<Person> people) {
+        if (people == null || people.isEmpty()) {
+            return;
+        }
         writeLock.lock();
         try {
-            HashSet<Person> set = requestMap.get(floor);
-            if (set == null) {
-                return;
-            }
-            set.remove(person);
-            //如果没有请求了就顺手删除
-            if (set.isEmpty()) {
-                requestMap.remove(floor);
+            for (Person person : people) {
+                int floor = person.getFromFloor();
+                HashSet<Person> set = requestMap.computeIfAbsent(floor, k -> new HashSet<>());
+                set.add(person);
+                if (person instanceof Worker) {
+                    maintainRequestNum++;
+                    maintainNotDealNum++;
+                }
             }
         } finally {
             writeLock.unlock();
         }
-    }
-
-    //得到这一层的所有请求
-    public HashSet<Person> getRequest(int floor) {
-        readLock.lock();
-        try {
-            HashSet<Person> set = requestMap.get(floor);
-            if (set == null) {
-                return new HashSet<>();
-            }
-            else {
-                return new HashSet<>(set);
-            }
-        } finally {
-            readLock.unlock();
+        synchronized (notifier) {
+            notifier.notifyAll();
         }
     }
 
@@ -74,55 +83,45 @@ public class RequestTable {
     public Person pollRequest() {
         writeLock.lock();
         try {
-            for (Integer floor : requestMap.keySet()) {
-                HashSet<Person> set = requestMap.get(floor);
-                if (!set.isEmpty()) {
-                    Person person = set.iterator().next();
-                    set.remove(person);
-                    if (set.isEmpty()) {
-                        requestMap.remove(floor);
+            if (maintainRequestNum > 0) {
+                for (Integer floor : requestMap.keySet()) {
+                    HashSet<Person> set = requestMap.get(floor);
+                    if (set == null || set.isEmpty()) {
+                        continue;
                     }
-                    return person;
+                    Person target = null;
+                    for (Person person : set) {
+                        if (person instanceof Worker) {
+                            target = person;
+                            break;
+                        }
+                    }
+                    if (target != null) {
+                        maintainRequestNum--;
+                        set.remove(target);
+                        if (set.isEmpty()) {
+                            requestMap.remove(floor);
+                        }
+                        return target;
+                    }
+                }
+            }
+            else {
+                for (Integer floor : requestMap.keySet()) {
+                    HashSet<Person> set = requestMap.get(floor);
+                    if (!set.isEmpty()) {
+                        Person person = set.iterator().next();
+                        set.remove(person);
+                        if (set.isEmpty()) {
+                            requestMap.remove(floor);
+                        }
+                        return person;
+                    }
                 }
             }
             return null;
         }
         finally {
-            writeLock.unlock();
-        }
-    }
-
-    public ArrayList<Person> letInRequests(int curFloor, int curWeight, boolean direction,
-                                              HashMap<Integer, HashSet<Person>> destMap) {
-        ArrayList<Person> letIn = new ArrayList<>();
-        writeLock.lock();
-        try {
-            newWeight = curWeight;
-            HashSet<Person> set = requestMap.get(curFloor);
-            if (set == null || set.isEmpty()) {
-                return letIn;
-            }
-
-            Iterator<Person> iterator = set.iterator();
-            while (iterator.hasNext()) {
-                Person person = iterator.next();
-                if (person.isDirection() == direction) {
-                    int weight = person.getWeight();
-                    if (newWeight + weight <= 400) {
-                        newWeight += weight;
-                        letIn.add(person);
-                        destMap.computeIfAbsent(
-                                person.getToFloor(), k -> new HashSet<>()).add(person);
-                        iterator.remove(); // 关键：在锁内直接删
-                    }
-                }
-            }
-
-            if (set.isEmpty()) {
-                requestMap.remove(curFloor);
-            }
-            return letIn;
-        } finally {
             writeLock.unlock();
         }
     }
@@ -152,7 +151,7 @@ public class RequestTable {
     public boolean isEnd() {
         readLock.lock();
         try {
-            return endFlag;
+            return endFlag && (maintainNotDealNum == 0);
         } finally {
             readLock.unlock();
         }
@@ -160,18 +159,22 @@ public class RequestTable {
 
     public void awaitNewRequest() throws InterruptedException {
         synchronized (notifier) {
-            while (!endFlag && isEmpty()) {
+            while (isEmpty() && !isEnd()) {
                 notifier.wait();
             }
         }
     }
 
-    public Integer getNewWeight() {
-        readLock.lock();
+    public void subMaintainNum() {
+        writeLock.lock();
         try {
-            return newWeight;
-        } finally {
-            readLock.unlock();
+            maintainNotDealNum--;
+        }
+        finally {
+            writeLock.unlock();
+        }
+        synchronized (notifier) {
+            notifier.notifyAll();
         }
     }
 }

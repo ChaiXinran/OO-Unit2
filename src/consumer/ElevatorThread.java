@@ -1,6 +1,7 @@
 package consumer;
 
 import buffer.AdviceType;
+import buffer.RequestQueue;
 import buffer.RequestTable;
 
 import com.oocourse.elevator2.TimableOutput;
@@ -20,30 +21,35 @@ public class ElevatorThread extends Thread {
     private boolean direction = true;
     private final HashMap<Integer, HashSet<Person>> destMap = new HashMap<>();
     private final RequestTable requestTable;
+    private final RequestQueue requestQueue;
     private final Strategy strategy;
     private boolean doorOpen = false;
-    private boolean normal = true;
-    private Worker maintain = null;
+    private boolean normal = true;//需要上锁
+    private Worker maintain = null;//需要上锁
+    private final Object stateLock = new Object();
 
-    public ElevatorThread(int id,RequestTable requestTable, Strategy strategy) {
+    public ElevatorThread(int id,RequestTable requestTable,
+                          RequestQueue requestQueue,Strategy strategy) {
         this.id = id;
         this.requestTable = requestTable;
+        this.requestQueue = requestQueue;
         this.strategy = strategy;
     }
 
     @Override
     public void run() {
         while (true) {
-            AdviceType advice =
-                    strategy.getAdvice(curFloor,curWeight,direction,destMap,normal);
+            AdviceType advice = getAdviceSafely();
+            //TimableOutput.println(id + " " + advice.toString());
             if (advice == AdviceType.MAINTAIN) {
                 try {
                     maintain();
+                    continue;
                 } catch (InterruptedException e) {
                     throw new RuntimeException(e);
                 }
             }
-            else if (advice == AdviceType.MOVE) {
+            if (advice == AdviceType.MOVE) {
                 try {
                     move();
                 } catch (InterruptedException e) {
@@ -54,17 +60,25 @@ public class ElevatorThread extends Thread {
                 try {
                     ArrayList<Person> peopleServed;//缓冲队列
                     ArrayList<Person> peopleOut = letOutCurrentFloor();
-                    synchronized (requestTable) {
+                    peopleServed = requestQueue.letInRequests(
+                            curFloor,curWeight,direction,destMap);
+                    //TimableOutput.println("Success in get PeopleServed");
+                    /*synchronized (requestTable) {
                         //二次咨询
-                        AdviceType checkOpen = strategy.getAdvice(
-                                curFloor,curWeight,direction,destMap,normal);
-                        if (checkOpen != AdviceType.OPEN) {
+                        AdviceType checkOpen = getAdviceSafely();
+                        //TimableOutput.println("Success in get Advice 2");
+                        if (checkOpen != AdviceType.OPEN
+                                && peopleOut == null && peopleServed == null) {
+                            //TimableOutput.println("Success in continue");
                             continue;
                         }
                         //将能接的人从请求队列中移出，加入到缓冲队列中
-                        peopleServed = requestTable.letInRequests(
-                                curFloor,curWeight,direction,destMap);
-                    }
+                        if (checkOpen == AdviceType.OPEN) {
+                            requestTable.letInRequests(
+                                    curFloor,curWeight,direction,id,destMap,peopleServed);
+                        }
+                    }*/
+                    //TimableOutput.println("Success to open and Serve");
                     openAndServe(peopleServed,peopleOut);
                 } catch (InterruptedException e) {
                     throw new RuntimeException(e);
@@ -76,7 +90,7 @@ public class ElevatorThread extends Thread {
             }
             else if (advice == AdviceType.WAIT) {
                 try {
-                    requestTable.awaitNewRequest();
+                    awaitWork();
                 } catch (InterruptedException e) {
                     throw new RuntimeException(e);
                 }
@@ -88,19 +102,36 @@ public class ElevatorThread extends Thread {
     }
 
     private void maintain() throws InterruptedException {
-        clearPeople();
+        //TimableOutput.println("Maintain Begin");
+        Worker worker = getMaintainWorkerSafely();
+        if (worker == null) {
+            return;
+        }
+        clearPeople(worker);
         //repair 至少1s
         TimableOutput.println("MAINT1-BEGIN-" + id);
+        clearQueue();
         sleep(1000);
         //测试阶段直奔目标楼层
         TimableOutput.println("MAINT2-BEGIN-" + id);
-        districtTo(maintain.getToFloor());
+        districtTo(worker.getToFloor());
         //返回
         districtTo(5);
         //开门，维修人员下来
+        openDoor(5);
+        TimableOutput.println("OUT-S-" + worker.getId() + "-"
+                + strFloor[curFloor - 1] + "-" + id);
+        closeDoor(5);
         TimableOutput.println("MAINT-END-" + id);
-        doorOpen = true;
-        normal = true;
+
+        synchronized (stateLock) {
+            normal = true;
+            maintain = null;
+        }
+        //完成检修
+        requestTable.subMaintainNum();
+        //有一个电梯完成检修，可以通知全局，唤醒调度器
+        requestTable.signal();
     }
 
     private void move() throws InterruptedException {
@@ -123,18 +154,21 @@ public class ElevatorThread extends Thread {
 
     private void openAndServe(ArrayList<Person> peopleIn,
                               ArrayList<Person> peopleOut) throws InterruptedException {
+        //TimableOutput.println("OpenAndServe");
         openDoor(curFloor);
         letOutPrint(peopleOut);
         letInCurrentFloor(peopleIn);
         //不关门
+        //叫醒调度器
+        requestTable.signal();
     }
 
     private void letInCurrentFloor(ArrayList<Person> inList) {
         if (inList.isEmpty()) {
             return;
         }
-        curWeight = requestTable.getNewWeight();
         for (Person person : inList) {
+            curWeight += person.getWeight();
             TimableOutput.println("IN-" + person.getId() + "-"
                     + strFloor[curFloor - 1] + "-" + id);
         }
@@ -164,20 +198,24 @@ public class ElevatorThread extends Thread {
         }
     }
 
-    private void letOut(Integer floor) {
+    private void letOut(Integer floor) throws InterruptedException {
         HashSet<Person> outSet = destMap.get(floor);
         if (outSet == null || outSet.isEmpty()) {
+            closeDoor(floor);
             return;
         }
+        openDoor(floor);
         for (Person person : outSet) {
             curWeight -= person.getWeight();
             TimableOutput.println("OUT-S-" + person.getId() + "-"
                     + strFloor[floor - 1] + "-" + id);
         }
         destMap.remove(floor);
+        closeDoor(floor);
     }
 
     private void clearRequest(Integer floor) {
+        ArrayList<Person> recycled = new ArrayList<>();
         for (Integer f : destMap.keySet()) {
             if (floor.equals(f)) {
                 //到达目的地
@@ -193,16 +231,16 @@ public class ElevatorThread extends Thread {
                     curWeight -= person.getWeight();
                     TimableOutput.println("OUT-F-" + person.getId() + "-"
                             + strFloor[floor - 1] + "-" + id);
-                    Person other = new Passenger(person.getId(),
-                            strFloor[person.getFromFloor() - 1],
+                    Person other = new Passenger(person.getId(), "F1",
                             strFloor[person.getToFloor() - 1], person.getWeight());
                     //放回请求列表
-                    requestTable.addRequest(other);
+                    recycled.add(other);
                 }
             }
         }
         //清空电梯内的人
         destMap.clear();
+        requestTable.addRequests(recycled);
     }
 
     private Integer preClear() {
@@ -229,19 +267,20 @@ public class ElevatorThread extends Thread {
         return -1;
     }
 
-    private void clearPeople() throws InterruptedException {
+    private void clearQueue() {
+        ArrayList<Person> waitingPeople = requestQueue.drainAllRequests();
+        requestTable.addRequests(waitingPeople);
+    }
+
+    private void clearPeople(Worker worker) throws InterruptedException {
         if (curFloor != 5) {
-            openDoor(curFloor);
             letOut(curFloor);
-            closeDoor(curFloor);
             if (curFloor < 5) {
                 direction = true;
                 for (int i = curFloor + 1; i < 5; i++) {
                     sleep(400);
                     arrive(i);
-                    openDoor(i);
                     letOut(i);
-                    closeDoor(i);
                 }
             }
             else {
@@ -252,9 +291,7 @@ public class ElevatorThread extends Thread {
                     sleep(400);
                     arrive(i);
                     if (i != noStop) {
-                        openDoor(i);
                         letOut(i);
-                        closeDoor(i);
                     }
                 }
             }
@@ -266,20 +303,22 @@ public class ElevatorThread extends Thread {
         //电梯在一楼如何处理
         openDoor(curFloor);
         clearRequest(curFloor);
+        TimableOutput.println("IN-" + worker.getId() + "-"
+                + strFloor[curFloor - 1] + "-" + id);
         closeDoor(curFloor);
     }
 
     private void districtTo(Integer floor) throws InterruptedException {
         if (floor > curFloor) {
             direction = true;
-            for (int i = curFloor; i <= floor; i++) {
+            for (int i = curFloor + 1; i <= floor; i++) {
                 sleep(200);
                 arrive(i);
             }
         }
         else {
             direction = false;
-            for (int i = curFloor; i >= floor; i--) {
+            for (int i = curFloor - 1; i >= floor; i--) {
                 sleep(200);
                 arrive(i);
             }
@@ -306,11 +345,105 @@ public class ElevatorThread extends Thread {
         }
     }
 
-    public void setNormal(boolean normal) {
-        this.normal = normal;
+    public void awaitWork() throws InterruptedException {
+        synchronized (stateLock) {
+            while (normal && requestQueue.isEmpty() && !requestQueue.isEnd()) {
+                stateLock.wait();
+            }
+        }
     }
 
-    public void setWorker(Worker maintain) {
-        this.maintain = maintain;
+    public void wakeUpForMaintain(Worker worker) {
+        synchronized (stateLock) {
+            this.maintain = worker;
+            this.normal = false;
+            stateLock.notifyAll();
+        }
+    }
+
+    public void wakeUp() {
+        synchronized (stateLock) {
+            stateLock.notifyAll();
+        }
+    }
+
+    private AdviceType getAdviceSafely() {
+        synchronized (stateLock) {
+            return strategy.getAdvice(curFloor, curWeight, direction, destMap, normal);
+        }
+    }
+
+    private Worker getMaintainWorkerSafely() {
+        synchronized (stateLock) {
+            return maintain;
+        }
+    }
+
+    public int getCost(Person person) {
+        synchronized (stateLock) {
+            if (!normal) {
+                return Integer.MAX_VALUE;
+            }
+
+            int from = person.getFromFloor();
+            boolean reqDir = person.isDirection();
+
+            int pickup;
+            pickup = Math.abs(curFloor - from);
+            int pathPenalty;
+            int busyPenalty;
+            int loadPenalty;
+
+            boolean hasPassengers = curWeight > 0;
+            int stopCount = destMap.size();
+
+            if (assignNum() >= 8) {
+                return Integer.MAX_VALUE;
+            }
+
+            if (!hasPassengers) {
+                // 空载：鼓励主动竞争，方向只做轻微修正
+                pathPenalty = (direction == reqDir ? 0 : 3);
+                busyPenalty = 0;
+            } else {
+
+                boolean sameDir = (direction == reqDir);
+                boolean onTheWay =
+                        (direction && from >= curFloor) || (!direction && from <= curFloor);
+
+                if (sameDir && onTheWay) {
+                    // 顺路捎带：最优先
+                    pathPenalty = 0;
+                    busyPenalty = 2 * stopCount;
+                } else if (sameDir) {
+                    // 同向但在背后：要回头
+                    pathPenalty = 12;
+                    busyPenalty = 3 * stopCount;
+                } else {
+                    // 反向：尽量少接
+                    pathPenalty = 22;
+                    busyPenalty = 4 * stopCount;
+                }
+            }
+
+            if (curWeight >= 350) {
+                loadPenalty = 12;
+            } else if (curWeight >= 250) {
+                loadPenalty = 5;
+            } else {
+                loadPenalty = 0;
+            }
+
+            int pickupWeight = hasPassengers ? 8 : 10;
+            return pickupWeight * pickup + pathPenalty + busyPenalty + loadPenalty;
+        }
+    }
+
+    public synchronized boolean isNormal() {
+        return normal;
+    }
+
+    public synchronized int assignNum() {
+        return requestQueue.getAssignedCount();
     }
 }

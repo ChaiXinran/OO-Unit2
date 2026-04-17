@@ -10,11 +10,9 @@ import java.io.IOException;
 
 public class InputThread extends Thread {
     private final RequestTable allRequests;
-    private final RequestTable maintainRequests;
 
-    public InputThread(RequestTable allRequests, RequestTable maintainRequests) {
+    public InputThread(RequestTable allRequests) {
         this.allRequests = allRequests;
-        this.maintainRequests = maintainRequests;
     }
 
     @Override
@@ -25,7 +23,6 @@ public class InputThread extends Thread {
                 Request request = elevatorInput.nextRequest();
                 if (request == null) {
                     allRequests.setEndFlag(true);
-                    maintainRequests.setEndFlag(true);
                     break;
                 }
                 else {
@@ -41,7 +38,7 @@ public class InputThread extends Thread {
                         Worker worker = new Worker(maintRequest.getWorkerId(),
                                 maintRequest.getToFloor(),
                                 maintRequest.getElevatorId());
-                        maintainRequests.addRequest(worker);
+                        allRequests.addRequest(worker);
                     }
                 }
             }

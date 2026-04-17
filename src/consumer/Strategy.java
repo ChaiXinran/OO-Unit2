@@ -1,7 +1,9 @@
 package consumer;
 
 import buffer.AdviceType;
+import buffer.RequestQueue;
 import buffer.RequestTable;
+
 import producer.Person;
 
 import java.util.HashMap;
@@ -10,9 +12,12 @@ import java.util.HashSet;
 public class Strategy {
 
     private final RequestTable requestTable;
+    private final RequestQueue requestQueue;
 
-    public Strategy(RequestTable requestTable) {
+    public Strategy(RequestTable requestTable,
+                    RequestQueue requestQueue) {
         this.requestTable = requestTable;
+        this.requestQueue = requestQueue;
     }
 
     public AdviceType getAdvice(int curFloor, int curWeight, boolean direction,
@@ -25,16 +30,19 @@ public class Strategy {
             return AdviceType.OPEN;
         }
         //如果电梯里有人
-        if (curWeight != 0) {
+        if (curWeight > 0) {
             //有人的目的地在电梯行动方向上
+            //TimableOutput.println("Still has people in!");
             return AdviceType.MOVE;
         }
         //如果电梯里没有人
         else {
             //如果请求队列里没有人
-            if (requestTable.isEmpty()) {
+            if (requestQueue.isEmpty()) {
                 //如果输入结束
-                if (requestTable.isEnd()) {
+                //TimableOutput.println("Empty");
+                if (requestQueue.isEnd()) {
+                    //TimableOutput.println("OVER");
                     return AdviceType.OVER;
                 }
                 else {
@@ -44,10 +52,12 @@ public class Strategy {
             //如果请求队列里有人
             else if (hasReqInOriginDirection(curFloor,direction)) {
                 //如果请求发出地在电梯前方
+                //TimableOutput.println("Still has requests!");
                 return AdviceType.MOVE;
             }
             else {
                 //电梯转向，但不移动
+                //TimableOutput.println("REVERSE");
                 return AdviceType.REVERSE;
             }
         }
@@ -62,19 +72,10 @@ public class Strategy {
     //判断现在是否可以上人
     //判断现在是否可以上人
     private boolean canOpenForIn(int curFloor, int curWeight, boolean direction) {
-        //判断体重是否超标
-        if (curWeight <= 350) {
-            //得到在该层中需要上电梯的所有人
-            HashSet<Person> people = requestTable.getRequest(curFloor);
-            //判断这一层是否有人需要上电梯
-            for (Person person : people) {
-                if (person.isDirection() == direction
-                        && curWeight + person.getWeight() <= 400) {
-                    return true;
-                }
-            }
+        if (curWeight > 350) {
+            return false;
         }
-        return false;
+        return requestQueue.hasPickableRequestAt(curFloor, curWeight, direction);
     }
 
     private boolean hasReqInOriginDirection(int curFloor, boolean direction) {
@@ -82,16 +83,16 @@ public class Strategy {
         if (direction) {
             //得到在该层前方中需要上电梯的所有人
             for (int i = curFloor + 1;i <= 11; i++) {
-                HashSet<Person> people = requestTable.getRequest(i);
-                if (!people.isEmpty()) {
+                //HashSet<Person> people = requestTable.getRequest(i);
+                if (requestQueue.hasRequestAt(i)) {
                     return true;
                 }
             }
         }
         else {
             for (int i = curFloor - 1; i >= 1; i--) {
-                HashSet<Person> people = requestTable.getRequest(i);
-                if (!people.isEmpty()) {
+                //HashSet<Person> people = requestTable.getRequest(i);
+                if (requestQueue.hasRequestAt(i)) {
                     return true;
                 }
             }
